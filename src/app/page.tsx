@@ -1,69 +1,206 @@
-import Image from "next/image";
+/** biome-ignore-all lint/a11y/noStaticElementInteractions: <explanation> */
+"use client";
+
+import { useRef, useState } from "react";
 
 export default function Home() {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [status, setStatus] = useState("Ainda não há arquivo selecionado.");
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [downloadName, setDownloadName] = useState("");
+
+  const handleSelectedFile = (file?: File) => {
+    if (!file) {
+      return;
+    }
+
+    const validTypes = [
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain",
+      "application/msword",
+    ];
+
+    const hasSupportedExtension = [".pdf", ".docx", ".txt"].some((extension) =>
+      file.name.toLowerCase().endsWith(extension),
+    );
+
+    if (!hasSupportedExtension && !validTypes.includes(file.type)) {
+      setStatus("Tipo de arquivo não suportado. Escolha um PDF, DOCX ou TXT.");
+      return;
+    }
+
+    setSelectedFile(file);
+    setDownloadUrl(null);
+    setStatus(`${file.name} está pronto para conversão.`);
+  };
+
+  const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    handleSelectedFile(file);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const file = event.dataTransfer.files?.[0];
+    handleSelectedFile(file);
+  };
+
+  const handleConvert = async () => {
+    if (!selectedFile) {
+      setStatus("Selecione um arquivo antes de converter.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    setIsUploading(true);
+    setStatus("Convertendo seu arquivo para OFX...");
+
+    try {
+      const response = await fetch("/api/convert", {
+        method: "POST",
+        body: formData,
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Não foi possível converter o arquivo.");
+      }
+
+      setDownloadUrl(payload.downloadUrl);
+      setDownloadName(payload.filename);
+      setStatus(payload.message);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Falha na conversão. Tente novamente.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#eff6ff,_#f8fafc_45%,_#e2e8f0_100%)] px-4 py-10 text-slate-800">
+      <div className="mx-auto max-w-5xl">
+        <header className="mb-8 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-blue-700">Conversor OFX</p>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900 md:text-5xl">
+              Converta documentos para OFX em segundos.
+            </h1>
+          </div>
+          <div className="rounded-full border border-blue-200 bg-white/70 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm backdrop-blur">
+            PDF • DOCX • TXT
+          </div>
+        </header>
+
+        <section className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
+          <div className="rounded-3xl border border-slate-200 bg-white/90 p-6 shadow-lg shadow-slate-200/60 backdrop-blur">
+            <div
+              onDragOver={(event) => {
+                event.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              className={`rounded-2xl border-2 border-dashed p-8 text-center transition ${
+                isDragging
+                  ? "border-blue-500 bg-blue-50"
+                  : "border-slate-300 bg-slate-50/80"
+              }`}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,.txt"
+                className="hidden"
+                onChange={handleInputChange}
+              />
+
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-2xl text-blue-700">
+                ⤴
+              </div>
+              <p className="mt-5 text-lg font-semibold text-slate-900">
+                Arraste e solte um arquivo aqui
+              </p>
+              <p className="mt-2 text-sm text-slate-600">
+                ou clique no botão abaixo para escolher um documento.
+              </p>
+
+              {selectedFile ? (
+                <div className="mt-6 inline-flex items-center gap-3 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
+                  <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  {selectedFile.name}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
+              >
+                Escolher arquivo
+              </button>
+              <button
+                type="button"
+                onClick={handleConvert}
+                disabled={!selectedFile || isUploading}
+                className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                {isUploading ? "Convertendo..." : "Converter para OFX"}
+              </button>
+            </div>
+
+            <p className="mt-5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              {status}
+            </p>
+          </div>
+
+          <aside className="rounded-3xl border border-slate-200 bg-slate-900 p-6 text-slate-200 shadow-lg shadow-slate-300/40">
+            <h2 className="text-xl font-semibold text-white">O que acontece agora</h2>
+            <ol className="mt-5 space-y-4 text-sm leading-6 text-slate-300">
+              <li>
+                <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-500/20 text-xs font-bold text-blue-200">
+                  1
+                </span>
+                Seu arquivo enviado é salvo em uma pasta temporária.
+              </li>
+              <li>
+                <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-500/20 text-xs font-bold text-blue-200">
+                  2
+                </span>
+                O conteúdo é extraído e transformado em um arquivo OFX válido.
+              </li>
+              <li>
+                <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-blue-500/20 text-xs font-bold text-blue-200">
+                  3
+                </span>
+                O arquivo original é removido e um link de download é gerado.
+              </li>
+            </ol>
+
+            <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-800 p-4">
+              {downloadUrl ? (
+                <a
+                  href={downloadUrl}
+                  download={downloadName}
+                  className="inline-flex w-full items-center justify-center rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400"
+                >
+                  Baixar arquivo OFX
+                </a>
+              ) : (
+                <p className="text-sm text-slate-400">Seu arquivo OFX gerado aparecerá aqui.</p>
+              )}
+            </div>
+          </aside>
+        </section>
+      </div>
+    </main>
   );
 }
