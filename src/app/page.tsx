@@ -1,7 +1,12 @@
 /** biome-ignore-all lint/a11y/noStaticElementInteractions: <explanation> */
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+type ErrorLog = {
+  timestamp?: string;
+  message?: string;
+};
 
 export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -11,6 +16,21 @@ export default function Home() {
   const [status, setStatus] = useState("Ainda não há arquivo selecionado.");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadName, setDownloadName] = useState("");
+  const [errorHistory, setErrorHistory] = useState<ErrorLog[]>([]);
+
+  useEffect(() => {
+    const fetchErrorHistory = async () => {
+      try {
+        const response = await fetch("/api/errors");
+        const payload = await response.json();
+        setErrorHistory(Array.isArray(payload) ? payload : []);
+      } catch {
+        setErrorHistory([]);
+      }
+    };
+
+    void fetchErrorHistory();
+  }, []);
 
   const handleSelectedFile = (file?: File) => {
     if (!file) {
@@ -196,6 +216,24 @@ export default function Home() {
                 </a>
               ) : (
                 <p className="text-sm text-slate-400">Seu arquivo OFX gerado aparecerá aqui.</p>
+              )}
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-800 p-4">
+              <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+                Histórico local de erros
+              </h3>
+              {errorHistory.length === 0 ? (
+                <p className="text-sm text-slate-400">Nenhum erro registrado até o momento.</p>
+              ) : (
+                <ul className="space-y-2 text-xs text-slate-300">
+                  {errorHistory.slice(-5).reverse().map((log, index) => (
+                    <li key={`${log.timestamp ?? index}-${index}`} className="rounded-lg border border-slate-700 bg-slate-900/60 p-2">
+                      <div className="font-medium text-slate-100">{log.timestamp ?? "Sem data"}</div>
+                      <div className="mt-1 break-words text-slate-300">{log.message ?? "Erro desconhecido"}</div>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
           </aside>
