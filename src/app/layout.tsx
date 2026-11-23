@@ -13,8 +13,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Conversor OFX",
-  description: "Converta arquivos PDF, DOCX e TXT em documentos OFX para download.",
+  title: "Conversor OFX - Gessele",
+  description: "Converta extratos bancários em PDF, DOCX ou TXT para o formato OFX de forma rápida e gratuita.",
+  keywords: ["conversor OFX", "extrato bancário", "PDF para OFX", "OFX", "Gessele"],
+  authors: [{ name: "Gessele" }],
+  robots: "index, follow",
+  openGraph: {
+    title: "Conversor OFX - Gessele",
+    description: "Converta extratos bancários em PDF, DOCX ou TXT para o formato OFX de forma rápida e gratuita.",
+    url: "https://ofx-converter-five.vercel.app",
+    siteName: "Conversor OFX",
+    locale: "pt_BR",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Conversor OFX - Gessele",
+    description: "Converta extratos bancários em PDF, DOCX ou TXT para o formato OFX de forma rápida e gratuita.",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
