@@ -22,7 +22,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       message: "Seu documento foi convertido para OFX com sucesso.",
-      downloadUrl: result.downloadUrl,
+      ofxContent: result.ofxContent,
       filename: result.fileName,
     });
   } catch (error) {

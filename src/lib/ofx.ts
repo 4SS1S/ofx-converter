@@ -8,9 +8,9 @@ import * as pdfjsWorker from "pdfjs-dist/legacy/build/pdf.worker.mjs";
 
 (globalThis as Record<string, unknown>).pdfjsWorker = pdfjsWorker;
 
-const APP_TEMP_ROOT = path.join(process.cwd(), ".tmp");
+// On Vercel, only /tmp is writable. Use it for ephemeral files within a single invocation.
+const APP_TEMP_ROOT = "/tmp/ofx-converter";
 const UPLOADS_DIR = path.join(APP_TEMP_ROOT, "uploads");
-const DOWNLOADS_DIR = path.join(APP_TEMP_ROOT, "downloads");
 const ERROR_LOG_PATH = path.join(APP_TEMP_ROOT, "error-history.log");
 
 let cleanupTimerStarted = false;
@@ -49,7 +49,6 @@ export async function readErrorHistory(limit = 10) {
 
 export async function ensureTempFolders() {
   await fs.mkdir(UPLOADS_DIR, { recursive: true });
-  await fs.mkdir(DOWNLOADS_DIR, { recursive: true });
 }
 
 export function startDailyCleanup() {
@@ -74,20 +73,16 @@ export async function cleanupOldFiles() {
 
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
 
-  for (const directory of [UPLOADS_DIR, DOWNLOADS_DIR]) {
-    const entries = await fs.readdir(directory, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const fullPath = path.join(directory, entry.name);
-
-      try {
-        const stats = await fs.stat(fullPath);
-        if (stats.mtimeMs < cutoff) {
-          await fs.unlink(fullPath);
-        }
-      } catch {
-        // Ignore cleanup failures for files that are already gone.
+  const entries = await fs.readdir(UPLOADS_DIR, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(UPLOADS_DIR, entry.name);
+    try {
+      const stats = await fs.stat(fullPath);
+      if (stats.mtimeMs < cutoff) {
+        await fs.unlink(fullPath);
       }
+    } catch {
+      // Ignore cleanup failures for files that are already gone.
     }
   }
 }
@@ -120,14 +115,10 @@ export async function convertUploadedFile(fileName: string, buffer: Buffer) {
     await fs.unlink(sourcePath).catch(() => undefined);
   }
 
-  const outputId = randomUUID();
-  const outputPath = path.join(DOWNLOADS_DIR, `${outputId}.ofx`);
   const ofxContent = buildOfxDocument(safeBaseName, generatedText);
 
-  await fs.writeFile(outputPath, ofxContent, "utf8");
-
   return {
-    downloadUrl: `/api/download/${outputId}`,
+    ofxContent,
     fileName: `${safeBaseName}.ofx`,
   };
 }

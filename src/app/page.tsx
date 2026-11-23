@@ -15,6 +15,7 @@ export default function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState("Ainda não há arquivo selecionado.");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
   const [downloadName, setDownloadName] = useState("");
   const [errorHistory, setErrorHistory] = useState<ErrorLog[]>([]);
 
@@ -54,6 +55,10 @@ export default function Home() {
     }
 
     setSelectedFile(file);
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
     setDownloadUrl(null);
     setStatus(`${file.name} está pronto para conversão.`);
   };
@@ -93,7 +98,13 @@ export default function Home() {
         throw new Error(payload.error || "Não foi possível converter o arquivo.");
       }
 
-      setDownloadUrl(payload.downloadUrl);
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+      }
+      const blob = new Blob([payload.ofxContent], { type: "application/ofx+xml" });
+      const blobUrl = URL.createObjectURL(blob);
+      blobUrlRef.current = blobUrl;
+      setDownloadUrl(blobUrl);
       setDownloadName(payload.filename);
       setStatus(payload.message);
     } catch (error) {
