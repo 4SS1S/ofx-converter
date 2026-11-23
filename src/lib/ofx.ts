@@ -151,39 +151,58 @@ function extractPeriodFromFileName(fileName: string): { dtStart: string; dtEnd: 
 
 function extractTransactionsFromText(text: string): Transaction[] {
   const transactions: Transaction[] = [];
+  const seen = new Set<string>();
+  const datePattern = /\b(\d{2}[\/\-]\d{2}[\/\-]\d{4})\b/g;
+  // Matches Brazilian amounts: 1.234,56 or -1.234,56 or 1234,56
+  const amountPattern = /-?[\d]{1,3}(?:\.[\d]{3})*,\d{2}|-?\d+,\d{2}/g;
 
-  for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-
-    const dateMatch = trimmed.match(/\b(\d{2}[\/\-]\d{2}[\/\-]\d{4})\b/);
-    if (!dateMatch) continue;
-
-    const date = parseDateBR(dateMatch[1]);
+  let m: RegExpExecArray | null;
+  while ((m = datePattern.exec(text)) !== null) {
+    const date = parseDateBR(m[1]);
     if (!date) continue;
 
-    // Find all amounts in Brazilian format (e.g. 1.234,56 or -1.234,56)
-    const amountMatches = [...trimmed.matchAll(/-?[\d.]+,\d{2}/g)];
+    // Look forward up to 400 chars for description + amount
+    const after = text.slice(m.index + m[0].length, m.index + m[0].length + 400);
+
+    // Skip balance-only header lines (no transaction)
+    if (/saldo\s+anterior|saldo\s+final|saldo\s+do\s+dia/i.test(after.slice(0, 60))) continue;
+
+    // Skip date ranges like "a 31/10/2026"
+    if (/^\s*a\s+\d{2}[\/\-]/.test(after.slice(0, 15))) continue;
+
+    amountPattern.lastIndex = 0;
+    const amountMatches = [...after.matchAll(amountPattern)];
     if (amountMatches.length === 0) continue;
 
-    // First amount is the transaction value; last (if different) is often the running balance
     const amount = parseBrAmount(amountMatches[0][0]);
     if (amount === null || amount === 0) continue;
 
     // Description: text between the date and the first amount
-    const dateIdx = dateMatch.index! + dateMatch[0].length;
-    const amtIdx = amountMatches[0].index!;
-    const description = trimmed
-      .slice(dateIdx, amtIdx)
+    const desc = after
+      .slice(0, amountMatches[0].index!)
       .replace(/R\$\s*/g, "")
+      .replace(/[\r\n]+/g, " ")
+      .replace(/\s+/g, " ")
       .replace(/[-–]\s*$/, "")
-      .trim() || "Transação";
+      .trim();
+
+    // Skip if description is empty, only digits, or contains a nested date (header noise)
+    if (!desc || /^\d+$/.test(desc)) continue;
+    if (/\b\d{2}[\/\-]\d{2}[\/\-]\d{4}\b/.test(desc)) continue;
+
+    // Require at least one alphabetic character in description
+    if (!/[a-zA-ZÀ-ÿ]/.test(desc)) continue;
+
+    const key = `${date}|${amount}|${desc.slice(0, 40)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
 
     transactions.push({
       date,
       amount,
-      description,
+      description: desc.slice(0, 100),
       id: createHash("sha1")
-        .update(`${date}${amount}${description}${transactions.length}`)
+        .update(`${date}${amount}${desc}${transactions.length}`)
         .digest("hex")
         .slice(0, 16),
     });
@@ -222,29 +241,23 @@ async function extractPdfText(buffer: Buffer) {
       const page = await doc.getPage(i);
       const content = await page.getTextContent();
 
-      // Group text items by Y coordinate to reconstruct visual lines
-      const lineMap = new Map<number, Array<{ x: number; text: string }>>();
-
+      // Collect items with their positions
+      const items: Array<{ x: number; y: number; text: string }> = [];
       for (const item of content.items) {
         if (!("str" in item) || !item.str.trim()) continue;
-        const transform = (item as { transform: number[] }).transform;
-        const y = Math.round(transform[5]);
-        const x = transform[4];
-        if (!lineMap.has(y)) lineMap.set(y, []);
-        lineMap.get(y)!.push({ x, text: item.str });
+        const t = (item as { transform: number[] }).transform;
+        items.push({ x: t[4], y: t[5], text: item.str });
       }
 
-      // Sort lines top-to-bottom (Y descending in PDF coords), items left-to-right
-      const lines = [...lineMap.entries()]
-        .sort(([a], [b]) => b - a)
-        .map(([, items]) =>
-          items
-            .sort((a, b) => a.x - b.x)
-            .map((i) => i.text)
-            .join(" "),
-        );
+      // Sort top-to-bottom, left-to-right, using 5px Y tolerance to keep same-row items together
+      items.sort((a, b) => {
+        const yDiff = b.y - a.y;
+        return Math.abs(yDiff) > 5 ? yDiff : a.x - b.x;
+      });
 
-      pageTexts.push(lines.join("\n"));
+      // Join all items on the page into a single line preserving reading order.
+      // The lookahead parser handles finding amounts after dates regardless of newlines.
+      pageTexts.push(items.map((i) => i.text).join(" "));
     }
 
     return pageTexts.join("\n");
